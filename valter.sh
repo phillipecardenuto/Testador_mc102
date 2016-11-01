@@ -1,4 +1,5 @@
 # Scrpit: Testador para labs de mc102 
+# versão Com Valgrind para verificar vazamento de memória
 #!/bin/bash
  
 #PERGUNTAS USUAIS AO USUARIO    
@@ -29,8 +30,7 @@ on=0
 if [ "$baixa" = s ]; then
     #trap eh um comando que impede que o programa capote sem que algumas
     #alteracoes sejam feitas, i.e. apagar pastas criadas pelo Testador
-    # o comando ls lista os diretorios e volta a cor ao normal
-    trap 'rm  *.in *.res -f ; echo "NÃO ME MATE!!" ;ls; exit' 0 1 2 3 15  
+    trap 'rm  *.in *.res -f ; echo "NÃO ME MATE!!" ; exit' 0 1 2 3 15  
 # Verifica se o Usuario possui o comando curl  instaldo
     which curl > /dev/null || Curlerror
     j=1
@@ -71,7 +71,7 @@ if [ "$baixa" = s ]; then
     j=$[$j-1]
     rm -f $arq.in $arq.res
     baixado=0 
-    trap 'rm  *.in *.res -f ; echo "NÃO ME MATE!!";ls ; exit'  1 2 3 15 
+    trap 'rm  *.in *.res -f ; echo "NÃO ME MATE!!" ; exit'  1 2 3 15 
     #Caso o usuario nao queira baixar os Testes
 else
     baixado=1
@@ -96,16 +96,16 @@ else
         cp *.c   TEST
         cd TEST
     fi
-    trap 'rm -rf ../TEST ; echo "NÃO ME MATE!!!" ; ls;exit'   1 2 3 15 
+    trap 'rm -rf ../TEST ; echo "NÃO ME MATE!!!" ; exit'   1 2 3 15 
  
 fi
 #Compila o 'arquivo.c'
  
 #Mudar aqui o $lab no fim por *.c
-gcc -std=c99 -pedantic -Wall -lm  -g *.c  
+gcc -std=c99 -pedantic -Wall -g *.c -lm 
 #Caso de Erro de Compilacao
 if [ $? -ne 0 ] ; then
-    trap 'rm -rf ../TEST ; echo "NÃO ME MATE!!!" ;ls; exit'   1 2 3 15 
+    trap 'rm -rf ../TEST ; echo "NÃO ME MATE!!!" ; exit'   1 2 3 15 
     echo -e "\e[93mERRO NA COMPILAÇÃO,ESSE \e[4mNEGOCIO\e[24m NAO COMPILA"
     echo -e "\e[93mTente Outra Vez, ainda da tempo!"
     if [ "$baixado" = 0 ] ; then
@@ -123,6 +123,8 @@ if [ $? -ne 0 ] ; then
     exit
 fi
 clear
+#Função que trata a parada inesperada do programa e indica a quantidade
+#de testes errados até a parada
 function echo_erro {
 echo -e "\e[91m\e[4m\e[5mOs erros até o Teste $i  "
 echo -e "Total de erros:$erros \e[0m"
@@ -147,10 +149,11 @@ fi
  
 echo "Executando os testes..."
 erros=0
-trap ' Organiza ; clear ; echo_erro ;ls ; exit'  1 2 3 15 
+trap ' Organiza ; clear ; echo_erro  ; exit'  1 2 3 15 
 for (( i=1; i<=$j; i++ )); do
     arq="arq$(printf '%02d' $i)"
-    ./a.out < $arq.in > $arq.out
+   valgrind -q --leak-check=full  ./a.out < $arq.in > $arq.out
+   vetor_erro[$i]=0
  
     #Compara com os arquivos da Resolucao
     cmp=$(diff $arq.res $arq.out)
@@ -170,12 +173,27 @@ for (( i=1; i<=$j; i++ )); do
         echo -e "\e[93m"
         echo "========================================="
         erros=$(($erros+1))
+        vetor_erro[$i]=1
     fi
 done
  
 echo
 echo -e "\e[91m\e[4m\e[5mTotal de erros lógicos:$erros \e[0m"
- 
+#Caso houve algo de errado
+if [ $erros -gt 0 ]
+then
+    echo -e "   TESTES ERRADOS:"
+
+    #Examina quais testes não foram exatamente iguais aos esperados
+    # e imprime na tela esses testes
+    for (( i=1; i<=$j; i++ )); do
+        if [ ${vetor_erro[$i]} -eq 1 ]
+        then
+            echo "----Teste $i ----"
+        fi
+    done
+fi
+
 if [ "$baixado" = 1 ]
 then
     cd ..
@@ -192,7 +210,7 @@ else
     mv *.res RES  
 fi
 echo
-trap 'rm *.out -f ;ls; exit'  1 2 3 15 
+trap 'rm *.out -f ; exit'  1 2 3 15 
 echo -e "\e[93m Deu certo??"
 read resp
 #Entra no site do SuSy caso o usuario responda sim
@@ -203,7 +221,7 @@ then
     read resp2
     if [ "$resp2" = sim ] || [ "$resp2" = s ]
     then
-    trap 'rm nohup* -f ;ls; exit' 0 1 2 3 15  
+        trap 'rm nohup* -f ; exit' 0 1 2 3 15  
         nohup firefox https://susy.ic.unicamp.br:9999/mc102ijkl/$num & > /dev/null
         rm nohup.out -f
         clear
